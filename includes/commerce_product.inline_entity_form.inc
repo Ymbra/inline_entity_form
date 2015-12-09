@@ -144,7 +144,7 @@ class CommerceProductInlineEntityFormController extends EntityInlineEntityFormCo
     global $user;
 
     // Get the labels (product / variation).
-    $labels = $this->labels();
+    $labels = $this->labels($form_state['inline_entity_form'][$entity_form['#ief_id']]['instance']);
 
     $product = $entity_form['#entity'];
     $extra_fields = field_info_extra_fields('commerce_product', $product->type, 'form');

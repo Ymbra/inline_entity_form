@@ -83,15 +83,105 @@ function inline_entity_form_autocomplete($entity_type, $field_name, $bundle, $st
 }
 
 /**
+ * Implements hook_i18n_string_info().
+ */
+function inline_entity_form_i18n_string_info() {
+  $groups['inline_entity_form'] = array(
+    'title' => t('Inline Entity Form'),
+    'format' => FALSE,
+  );
+  return $groups;
+}
+
+/**
+ * Implements hook_field_update_instance().
+ */
+function inline_entity_form_field_update_instance($instance, $prior_instance) {
+  if (strpos($instance['widget']['type'], 'inline_entity_form') === 0) {
+    foreach (array('label_singular', 'label_plural') as $key) {
+      // Instead of using the numeric instance id, create a key consisting
+      // of the entity type, bundle and field name, for easier orientation
+      // on the Translation (admin/config/regional/translate/translate) page.
+      $instance_id = $instance['entity_type'] . ':' . $instance['bundle'] . ':' . $instance['field_name'];
+      $name = 'inline_entity_form:' . $instance_id . ':' . $key;
+      i18n_string_update($name, $instance['widget']['settings']['type_settings'][$key]);
+    }
+  }
+}
+
+/**
+ * Implements hook_field_create_instance().
+ */
+function inline_entity_form_field_create_instance($instance) {
+  inline_entity_form_field_update_instance($instance, $instance);
+}
+
+/**
+ * Translate a string using i18n_string, if available.
+ *
+ * @param string $name
+ *   Textgroup and context glued with ':'.
+ * @param string $default
+ *   String in default language. Default language may or may not be English.
+ * @param array $options
+ *   An associative array of additional options, with the following keys:
+ *   - langcode: the language code to translate to a language other than what is
+ *     used to display the page; defaults to the current language
+ *   - filter: filtering callback to apply to the translated string only
+ *   - format: input format to apply to the translated string only
+ *   - callback: callback to apply to the result (both to the translated or
+ *     untranslated string)
+ *   - update: whether to update source table; defaults to FALSE
+ *   - translate: whether to return a translation; defaults to TRUE.
+ *
+ * @return string
+ *   The translated string if i18n_string is available, the original otherwise.
+ *
+ * @see i18n_string()
+ */
+function inline_entity_form_i18n_string($name, $default, $options = array()) {
+  if (module_exists('i18n_string')) {
+    $result = i18n_string($name, $default, $options);
+  }
+  else {
+    $result = $default;
+    $options += array(
+      'format' => NULL,
+      'sanitize' => FALSE,
+    );
+    if ($options['sanitize']) {
+      $result = check_markup($result, $options['format']);
+    }
+  }
+
+  return $result;
+}
+
+/**
+ * Implements hook_i18n_string_list().
+ */
+function inline_entity_form_i18n_string_list($group) {
+  if ($group == 'inline_entity_form') {
+    // Allow the order creation help text to be translated.
+    $help = variable_get('commerce_order_help_text', '');
+
+    if (!empty($help)) {
+      $strings['commerce']['order']['help']['create'] = $help;
+      return $strings;
+    }
+  }
+}
+
+/**
  * Returns the Inline Entity Form controller for the passed-in reference field.
  *
- * @param $instance
+ * @param array $instance
  *   The instance array of the reference field.
  *
- * @return
+ * @return mixed
  *   An instantiated controller object, or FALSE if none found.
  */
-function inline_entity_form_get_controller($instance) {
+function inline_entity_form_get_controller(array $instance) {
   $field = field_info_field($instance['field_name']);
   $type_settings = $instance['widget']['settings']['type_settings'];
   $ief_settings = inline_entity_form_settings($field, $instance);
@@ -193,9 +283,9 @@ function inline_entity_form_entity_delete($entity, $type) {
 /**
  * Attaches theme specific CSS files.
  *
- * @param $theme_css
+ * @param array $theme_css
  *  An array of all CSS files that should be considered.
- * @param $css
+ * @param array $css
  *   The $form['#attached']['css'] array, modified by reference.
  */
 function _inline_entity_form_attach_css($theme_css, &$css) {
@@ -234,7 +324,11 @@ function inline_entity_form_field_widget_info() {
 
   $widgets['inline_entity_form_single'] = array(
     'label' => t('Inline entity form - Single value'),
-    'field types' => array('commerce_line_item_reference', 'commerce_product_reference', 'entityreference'),
+    'field types' => array(
+      'commerce_line_item_reference',
+      'commerce_product_reference',
+      'entityreference',
+    ),
     'settings' => array(
       'fields' => array(),
       'type_settings' => array(),
@@ -246,7 +340,11 @@ function inline_entity_form_field_widget_info() {
   );
   $widgets['inline_entity_form'] = array(
     'label' => t('Inline entity form - Multiple values'),
-    'field types' => array('commerce_line_item_reference', 'commerce_product_reference', 'entityreference'),
+    'field types' => array(
+      'commerce_line_item_reference',
+      'commerce_product_reference',
+      'entityreference',
+    ),
     'settings' => array(
       'fields' => array(),
       'type_settings' => array(),
@@ -326,7 +424,9 @@ function inline_entity_form_field_widget_properties_alter(&$widget, $context) {
 }
 
 /**
- * Introspects field and instance settings, and determines the correct settings
+ * Introspects field and instance settings.
+ *
+ * Also determines the correct settings
  * for the functioning of the widget.
  *
  * Settings:
@@ -404,7 +504,7 @@ function inline_entity_form_field_widget_form(&$form, &$form_state, $field, $ins
   }
 
   // Get the entity type labels for the UI strings.
-  $labels = $controller->labels();
+  $labels = $controller->labels($instance);
 
   // Build a parents array for this element's values in the form.
   $parents = array_merge($element['#field_parents'], array($element['#field_name'], $element['#language']));
@@ -838,7 +938,7 @@ function inline_entity_form_form_alter(&$form, &$form_state, $form_id) {
     if ($submit_element) {
       // Merge the IEF submit handler with the button level submit handlers if
       // available. Otherwise use the form level submit handlers.
-      if (!empty($submit_element['#submit'])){
+      if (!empty($submit_element['#submit'])) {
         $submit = array_merge(array('inline_entity_form_trigger_submit'), (array) $submit_element['#submit']);
       }
       else {
@@ -869,20 +969,20 @@ function inline_entity_form_update_row_weights($element, &$form_state, $form) {
 /**
  * Wraps and returns the entity form provided by the passed-in controller.
  *
- * @param $controller
+ * @param object $controller
  *   The inline entity form controller.
- * @param $entity_form
+ * @param array $entity_form
  *   The form array that will receive the entity form.
- * @param $form_state
+ * @param array $form_state
  *   The form state of the parent form.
  *
- * @return
+ * @return array
  *   The form array containing the embedded entity form.
  */
 function inline_entity_form_entity_form($controller, $entity_form, &$form_state) {
-  $labels = $controller->labels();
-  // Build a deta suffix that's appended to button #name keys for uniqueness.
   $delta = $entity_form['#ief_id'];
+  $labels = $controller->labels($form_state['inline_entity_form'][$delta]['instance']);
+  // Build a deta suffix that's appended to button #name keys for uniqueness.
   if ($entity_form['#op'] == 'edit') {
     $delta .= '-' . $entity_form['#ief_row_delta'];
     $save_label = t('Update @type_singular', array('@type_singular' => $labels['singular']));
@@ -906,7 +1006,7 @@ function inline_entity_form_entity_form($controller, $entity_form, &$form_state)
   // Retrieve the form provided by the controller.
   $entity_form = $controller->entityForm($entity_form, $form_state);
 
-  // Add the actions
+  // Add the actions.
   $entity_form['actions'] = array(
     '#type' => 'container',
     '#weight' => 100,
@@ -978,22 +1078,22 @@ function inline_entity_form_entity_form($controller, $entity_form, &$form_state)
 /**
  * Validates an entity form.
  *
- * @param $entity_form
- *  The form of the entity being managed inline.
- * @param $form_state
+ * @param array $entity_form
+ *   The form of the entity being managed inline.
+ * @param array $form_state
  *   The form state of the parent form.
  */
-function inline_entity_form_entity_form_validate(&$entity_form, &$form_state) {
+function inline_entity_form_entity_form_validate(array &$entity_form, array &$form_state) {
   $ief_id = $entity_form['#ief_id'];
   $instance = $form_state['inline_entity_form'][$ief_id]['instance'];
   // Instantiate the controller and validate the form.
   $controller = inline_entity_form_get_controller($instance);
   $controller->entityFormValidate($entity_form, $form_state);
 
-  // Unset untriggered conditional fields errors
+  // Unset untriggered conditional fields errors.
   $errors = form_get_errors();
   if ($errors && !empty($form_state['conditional_fields_untriggered_dependents'])) {
-    foreach ($form_state['conditional_fields_untriggered_dependents'] as $untriggered_dependents ) {
+    foreach ($form_state['conditional_fields_untriggered_dependents'] as $untriggered_dependents) {
       if (!empty($untriggered_dependents['errors'])) {
         foreach (array_keys($untriggered_dependents['errors']) as $key) {
           unset($errors[$key]);
@@ -1009,9 +1109,9 @@ function inline_entity_form_entity_form_validate(&$entity_form, &$form_state) {
  * Note that at this point the entity is not yet saved, since the user might
  * still decide to cancel the parent form.
  *
- * @param $entity_form
- *  The form of the entity being managed inline.
- * @param $form_state
+ * @param array $entity_form
+ *   The form of the entity being managed inline.
+ * @param array $form_state
  *   The form state of the parent form.
  */
 function inline_entity_form_entity_form_submit($entity_form, &$form_state) {
@@ -1055,9 +1155,10 @@ function inline_entity_form_entity_form_submit($entity_form, &$form_state) {
  *   The form array containing the embedded form.
  */
 function inline_entity_form_reference_form($controller, $reference_form, &$form_state) {
-  $labels = $controller->labels();
   $ief_id = $reference_form['#ief_id'];
   $instance = $form_state['inline_entity_form'][$ief_id]['instance'];
+  $labels = $controller->labels($instance);
+
   $autocomplete_path = 'inline_entity_form/autocomplete/' . $instance['entity_type'];
   $autocomplete_path .= '/' . $instance['field_name'] . '/' . $instance['bundle'];
 
@@ -1142,7 +1243,7 @@ function inline_entity_form_reference_form_validate(&$reference_form, &$form_sta
   // Instantiate controller to access labels
   $instance = $form_state['inline_entity_form'][$ief_id]['instance'];
   $controller = inline_entity_form_get_controller($instance);
-  $labels = $controller->labels();
+  $labels = $controller->labels($instance);
 
   $form_values = drupal_array_get_nested_value($form_state['values'], $reference_form['#parents']);
   $attach_entity = entity_load_single($entity_type, $form_values['entity_id']);

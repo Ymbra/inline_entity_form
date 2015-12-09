@@ -55,13 +55,17 @@ class EntityInlineEntityFormController {
   /**
    * Returns an array of entity type labels fit for display in the UI.
    */
-  public function labels() {
+  public function labels($instance) {
     $labels = $this->defaultLabels();
     // The admin has specified the exact labels that should be used.
     if ($this->settings['override_labels']) {
+      $instance_id = $instance['entity_type'] . ':' . $instance['bundle'] . ':' . $instance['field_name'];
+      $name_singular = 'inline_entity_form' . ':' . $instance_id . ':label_singular';
+      $name_plural = 'inline_entity_form' . ':' . $instance_id . ':label_plural';
+
       $labels = array(
-        'singular' => $this->settings['label_singular'],
-        'plural' => $this->settings['label_plural'],
+        'singular' => inline_entity_form_i18n_string($name_singular, $this->settings['label_singular']),
+        'plural' => inline_entity_form_i18n_string($name_singular, $this->settings['label_plural']),
       );
     }
 
@@ -166,7 +170,7 @@ class EntityInlineEntityFormController {
    *   The definition of the reference field instance.
    */
   public function settingsForm($field, $instance) {
-    $labels = $this->labels();
+    $labels = $this->labels($instance);
     $states_prefix = 'instance[widget][settings][type_settings]';
 
     $form = array();
@@ -342,7 +346,9 @@ class EntityInlineEntityFormController {
     if (!empty($entity_id) && $this->getSetting('allow_existing')) {
       $access = entity_access('delete', $this->entityType, $entity);
       if ($access) {
-        $labels = $this->labels();
+        $ief_id = $remove_form['#ief_id'];
+        $instance = $form_state['inline_entity_form'][$ief_id]['instance'];
+        $labels = $this->labels($instance);
         $remove_form['delete'] = array(
           '#type' => 'checkbox',
           '#title' => t('Delete this @type_singular from the system.', array('@type_singular' => $labels['singular'])),
